@@ -27,9 +27,13 @@ def keep_alive():
     t2 = Thread(target=schedule_checker)
     t2.start()
 
-# --- 2. التوكين ---
-TOKEN = '8381899997:AAGvqWc7WnjYr7y3qYMmPayW9r-dje29gQ0'
-bot = telebot.TeleBot(TOKEN)
+# قراءة التوكن من إعدادات الموقع الآمنة
+TOKEN = os.environ.get('TELEGRAM_TOKEN')
+
+if not TOKEN:
+    print("Error: TELEGRAM_TOKEN not found!")
+else:
+    bot = telebot.TeleBot(TOKEN)
 
 # --- 3. قاعدة بيانات الأذكار (النص الكامل) ---
 AZKAR_DB = {
@@ -323,4 +327,5 @@ def send_broadcast(text):
         except: pass
 
 keep_alive()
+
 bot.infinity_polling()
