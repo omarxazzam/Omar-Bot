@@ -1,99 +1,123 @@
 import telebot
-import requests
 from telebot import types
 from flask import Flask
 from threading import Thread
-import json
 import os
+import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from hijri_converter import convert
+import pymongo
+from pymongo import MongoClient
 
-# --- 1. إعدادات السيرفر (مجهز للسيرفرات السحابية) ---
+# --- 1. إعدادات الاتصال بقاعدة البيانات (MongoDB) ---
+# هذا هو الرابط السحري الخاص بك
+MONGO_URL = "mongodb+srv://omarxazzam_db_user:Vg4JEVwQUdqkvBaP@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
+
+try:
+    # محاولة الاتصال بالقاعدة
+    client = MongoClient(MONGO_URL)
+    db = client['omar_bot_db']  # اسم قاعدة البيانات
+    users_collection = db['users']  # جدول المستخدمين
+    print("✅ تم الاتصال بقاعدة البيانات بنجاح!")
+except Exception as e:
+    print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
+
+# --- 2. إعدادات البوت والسيرفر ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "<b>Omar Smart Bot V4.1 is Online!</b>"
+    return "<b>Omar Smart Bot V6.0 (Database Edition) is Online! 🚀</b>"
 
 def run():
-    # هذا التعديل مهم جداً لـ Render
-    # يجعل السيرفر يختار البورت المتاح تلقائياً
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
-    t2 = Thread(target=schedule_checker)
-    t2.start()
 
-# قراءة التوكن من إعدادات الموقع الآمنة
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
+bot = telebot.TeleBot(TOKEN)
 
-if not TOKEN:
-    print("Error: TELEGRAM_TOKEN not found!")
-else:
-    bot = telebot.TeleBot(TOKEN)
+# --- 3. وظائف التعامل مع البيانات (Database Functions) ---
 
-# --- 3. قاعدة بيانات الأذكار (النص الكامل) ---
-AZKAR_DB = {
-    'morning': [
-        {'t': '🌸 **آية الكرسي:**\n\n(اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ...)', 'c': 1},
-        {'t': '🌸 **الإخلاص والمعوذتين:**\n\n(قُلْ هُوَ ٱللَّهُ أَحَدٌ...)\n(قُلْ أَعُوذُ بِرَبِّ ٱلْفَلَقِ...)\n(قُلْ أَعُوذُ بِرَبِّ ٱلنَّاسِ...)', 'c': 3},
-        {'t': '🌸 **أذكار الصباح:**\n\nأَصْبَحْنا وَأَصْبَحَ المُلْكُ لله وَالحَمدُ لله، لا إلهَ إلاّ اللّهُ وَحدَهُ لا شَريكَ لهُ...', 'c': 1},
-        {'t': '🌸 **سيد الاستغفار:**\n\nاللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ...', 'c': 1},
-        {'t': '🌸 **الحفظ:**\n\nبِسْمِ اللهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ...', 'c': 3},
-        {'t': '🌸 **الرضا:**\n\nرَضِيتُ بِاللهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ نَبِيًّا.', 'c': 3},
-        {'t': '🌸 **التسبيح:**\n\nسُبْحَانَ اللهِ وَبِحَمْدِهِ: عَدَدَ خَلْقِهِ، وَرِضَا نَفْسِهِ، وَزِنَةَ عَرْشِهِ، وَمِدَادَ كَلِمَاتِهِ.', 'c': 3},
-        {'t': '🌸 **يا حي يا قيوم:**\n\nيا حَيُّ يا قَيُّومُ بِرَحْمَتِكَ أستَغيثُ، أصلِحْ لي شَأني كُلَّهُ، ولا تَكِلْني إلى نَفْسي طَرْفةَ عَيْن.', 'c': 1},
-        {'t': '🌸 **التهليل:**\n\nلا إلَهَ إلاَّ اللَّهُ وحْدَهُ لا شَرِيكَ لَهُ، لَهُ المُلْكُ ولَهُ الحَمْدُ، وهُوَ علَى كُلِّ شيءٍ قَدِيرٌ.', 'c': 10}
-    ],
-    'evening': [
-        {'t': '🌙 **آية الكرسي:**\n\n(اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ...)', 'c': 1},
-        {'t': '🌙 **الإخلاص والمعوذتين:**\n\n(قُلْ هُوَ ٱللَّهُ أَحَدٌ...)\n(قُلْ أَعُوذُ بِرَبِّ ٱلْفَلَقِ...)\n(قُلْ أَعُوذُ بِرَبِّ ٱلنَّاسِ...)', 'c': 3},
-        {'t': '🌙 **أذكار المساء:**\n\nأَمْسَيْنا وَأَمْسَى المُلْكُ لله وَالحَمدُ لله، لا إلهَ إلاّ اللّهُ وَحدَهُ لا شَريكَ لهُ...', 'c': 1},
-        {'t': '🌙 **سيد الاستغفار:**\n\nاللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ...', 'c': 1},
-        {'t': '🌙 **الحفظ:**\n\nبِسْمِ اللهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ...', 'c': 3},
-        {'t': '🌙 **التعوذ:**\n\nأَعُوذُ بِكَلِمَاتِ اللهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ.', 'c': 3},
-        {'t': '🌙 **الرضا:**\n\nرَضِيتُ بِاللهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ نَبِيًّا.', 'c': 3},
-        {'t': '🌙 **العافية:**\n\nاللَّهُمَّ عَافِنِي فِي بَدَنِي، اللَّهُمَّ عَافِنِي فِي سَمْعِي، اللَّهُمَّ عَافِنِي فِي بَصَرِي، لَا إِلَهَ إِلَّا أَنْتَ.', 'c': 3}
-    ]
-}
+def register_user(chat_id, first_name):
+    """تسجيل مستخدم جديد في قاعدة البيانات أو تحديث بياناته"""
+    cid = str(chat_id)
+    now = datetime.now().strftime("%Y-%m-%d")
+    
+    # البحث عن المستخدم
+    user = users_collection.find_one({"_id": cid})
+    
+    if not user:
+        # إذا كان مستخدماً جديداً، ننشئ له ملفاً
+        new_user = {
+            "_id": cid,
+            "name": first_name,
+            "join_date": now,
+            "points": 0,
+            "prayers": {}  # سجل الصلوات
+        }
+        users_collection.insert_one(new_user)
+        print(f"🆕 مستخدم جديد: {first_name}")
+    else:
+        # إذا كان موجوداً، فقط نحدث الاسم وتاريخ آخر ظهور
+        users_collection.update_one({"_id": cid}, {"$set": {"last_active": now, "name": first_name}})
 
-# --- 4. ملفات البيانات ---
-DB_FILE = "user_data.json"
-USERS_FILE = "users_ids.json"
-sessions = {}
-
-def load_json(filename):
-    if not os.path.exists(filename): return {}
-    with open(filename, 'r') as f:
-        try: return json.load(f)
-        except: return {}
-
-def save_json(filename, data):
-    with open(filename, 'w') as f:
-        json.dump(data, f)
-
-def register_user(chat_id):
-    users = load_json(USERS_FILE)
-    if str(chat_id) not in users:
-        users[str(chat_id)] = {"active": True}
-        save_json(USERS_FILE, users)
-
-def clear_user_data(user_id):
-    data = load_json(DB_FILE)
-    uid = str(user_id)
+def record_prayer(chat_id, prayer_name):
+    """تسجيل صلاة للمستخدم وزيادة نقاطه"""
+    cid = str(chat_id)
     today = datetime.now().strftime("%Y-%m-%d")
-    if uid in data and today in data[uid]:
-        del data[uid][today]
-        save_json(DB_FILE, data)
-        return True
-    return False
+    
+    # المفتاح داخل قاعدة البيانات: prayers.2023-10-25.Fajr
+    key = f"prayers.{today}.{prayer_name}"
+    
+    # التحقق هل سجلها سابقاً اليوم؟
+    user = users_collection.find_one({"_id": cid})
+    if user and 'prayers' in user and today in user['prayers'] and prayer_name in user['prayers'][today]:
+        return False # مسجلة مسبقاً
 
-# --- 5. منطق الوقت ---
-def get_egypt_time():
-    return datetime.utcnow() + timedelta(hours=2)
+    # تحديث القاعدة: وضع علامة صح للصلاة + زيادة 10 نقاط
+    users_collection.update_one(
+        {"_id": cid},
+        {
+            "$set": {key: True},
+            "$inc": {"points": 10}
+        },
+        upsert=True
+    )
+    return True
+
+def get_user_stats(chat_id):
+    """جلب إحصائيات المستخدم من القاعدة"""
+    user = users_collection.find_one({"_id": str(chat_id)})
+    if not user:
+        return 0, 0
+    points = user.get('points', 0)
+    # حساب عدد الصلوات المسجلة
+    total_prayers = 0
+    prayers_data = user.get('prayers', {})
+    for day in prayers_data:
+        total_prayers += len(prayers_data[day])
+    return points, total_prayers
+
+# --- 4. الوظائف المساعدة ---
+def get_hijri_date():
+    today = datetime.now()
+    h = convert.Gregorian(today.year, today.month, today.day).to_hijri()
+    return f"{h.day} {h.month_name()} {h.year}"
+
+def get_prayers_raw():
+    import requests
+    url = "http://api.aladhan.com/v1/timingsByCity"
+    params = {'city': 'Cairo', 'country': 'Egypt', 'method': 5}
+    try:
+        response = requests.get(url, params=params, timeout=3)
+        return response.json()['data']['timings']
+    except:
+        return None
 
 def convert_to_12h(time24):
     try:
@@ -102,230 +126,93 @@ def convert_to_12h(time24):
     except:
         return time24
 
-def get_prayers_raw():
-    url = "http://api.aladhan.com/v1/timingsByCity"
-    params = {'city': 'Cairo', 'country': 'Egypt', 'method': 5}
-    try:
-        response = requests.get(url, params=params, timeout=5)
-        return response.json()['data']['timings']
-    except:
-        return None
-
-def calculate_delay(prayer_time_str):
-    current = get_egypt_time()
-    p_time = datetime.strptime(prayer_time_str, "%H:%M")
-    p_date = current.replace(hour=p_time.hour, minute=p_time.minute, second=0)
-    diff = (current - p_date).total_seconds() / 60
-    
-    if diff < -20: return "بدري جداً ⚠️"
-    elif -20 <= diff <= 40: return "في وقتها 🟢"
-    elif 40 < diff < 60: return f"تأخير {int(diff)} د 🟠"
-    else: 
-        h = int(diff // 60)
-        m = int(diff % 60)
-        return f"تأخير {h} س {m} د 🔴"
-
-def log_activity(user_id, name, status):
-    data = load_json(DB_FILE)
-    uid = str(user_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    if uid not in data: data[uid] = {}
-    if today not in data[uid]: data[uid][today] = []
-    
-    data[uid][today] = [x for x in data[uid][today] if x['name'] != name]
-    entry = {"name": name, "status": status, "time": datetime.now().strftime("%I:%M %p")}
-    data[uid][today].append(entry)
-    save_json(DB_FILE, data)
-    return True
-
-# --- 6. منطق العداد الذكي ---
-def start_dhikr_session(chat_id, type_key):
-    sessions[chat_id] = {'type': type_key, 'index': 0, 'count': 0}
-    send_dhikr_card(chat_id)
-
-def send_dhikr_card(chat_id):
-    session = sessions.get(chat_id)
-    if not session: return
-    
-    zkr_list = AZKAR_DB[session['type']]
-    index = session['index']
-    
-    if index >= len(zkr_list):
-        name = "أذكار الصباح" if session['type'] == 'morning' else "أذكار المساء"
-        log_activity(chat_id, name, "تمت كاملة ✅")
-        bot.send_message(chat_id, f"🎉 **تقبل الله يا عمر!**\nتم الانتهاء من {name} وتسجيلها.", reply_markup=main_menu())
-        del sessions[chat_id]
-        return
-
-    current_zkr = zkr_list[index]
-    text = current_zkr['t']
-    required = current_zkr['c']
-    current_count = session['count']
-    
-    msg_text = f"📿 **{index + 1} / {len(zkr_list)}**\n\n{text}"
-    
-    markup = types.InlineKeyboardMarkup()
-    btn_text = f"سبح ({current_count}/{required}) 👆"
-    if current_count >= required: btn_text = "✅ اكتمل - التالي"
-    
-    markup.add(types.InlineKeyboardButton(btn_text, callback_data="zkr_count"))
-    
-    if current_count == 0:
-        bot.send_message(chat_id, msg_text, reply_markup=markup)
-
-# --- 7. التفاعل ---
+# --- 5. القوائم والتفاعل ---
 def main_menu():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📝 تسجيل العبادات"))
-    markup.add(types.KeyboardButton("📊 تقريري اليوم"), types.KeyboardButton("🏆 إحصائياتي"))
-    markup.add(types.KeyboardButton("🗑️ تصفير البيانات")) 
-    markup.add(types.KeyboardButton("☀️ أذكار الصباح"), types.KeyboardButton("🌙 أذكار المساء"))
-    return markup
-
-def tracking_menu():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("✅ الفجر", callback_data='done_Fajr'),
-        types.InlineKeyboardButton("✅ الظهر", callback_data='done_Dhuhr'),
-        types.InlineKeyboardButton("✅ العصر", callback_data='done_Asr'),
-        types.InlineKeyboardButton("✅ المغرب", callback_data='done_Maghrib'),
-        types.InlineKeyboardButton("✅ العشاء", callback_data='done_Isha')
-    )
+    markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📅 التاريخ الهجري"))
+    markup.add(types.KeyboardButton("📝 تسجيل صلاة"), types.KeyboardButton("🏆 نقاطي وإحصائياتي"))
+    markup.add(types.KeyboardButton("💡 حديث عشوائي"))
     return markup
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    register_user(message.chat.id)
-    bot.send_message(message.chat.id, "أهلاً بك يا عمر 🌹\nبوت المساعد الإسلامي جاهز.", reply_markup=main_menu())
+    register_user(message.chat.id, message.from_user.first_name)
+    welcome_msg = (
+        f"أهلاً بك يا **{message.from_user.first_name}** في بوت عُمر الذكي (نسخة السحابة) ☁️\n\n"
+        f"📅 التاريخ: {get_hijri_date()}\n"
+        f"✅ الآن يتم حفظ عباداتك في قاعدة بيانات آمنة للأبد!"
+    )
+    bot.send_message(message.chat.id, welcome_msg, reply_markup=main_menu(), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     text = message.text
     chat_id = message.chat.id
     
-    if text == "🕌 مواقيت الصلاة":
+    # تأكيد التسجيل عند كل رسالة لضمان وجود البيانات
+    register_user(chat_id, message.from_user.first_name)
+
+    if text == "📅 التاريخ الهجري":
+        bot.reply_to(message, f"📅 **التاريخ اليوم:**\n{get_hijri_date()}", parse_mode="Markdown")
+
+    elif text == "🕌 مواقيت الصلاة":
         timings = get_prayers_raw()
         if timings:
-            msg = "🕌 **مواقيت الصلاة اليوم:**\n\n"
+            msg = f"🕌 **مواقيت الصلاة ({get_hijri_date()}):**\n\n"
             for p in ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']:
-                msg += f"🔹 {name_to_ar(p)}: `{convert_to_12h(timings[p])}`\n"
-            bot.reply_to(message, msg)
-
-    elif text == "📝 تسجيل العبادات":
-        bot.reply_to(message, "سجل صلاتك:", reply_markup=tracking_menu())
-
-    elif text == "📊 تقريري اليوم":
-        data = load_json(DB_FILE)
-        today = datetime.now().strftime("%Y-%m-%d")
-        uid = str(chat_id)
-        if uid in data and today in data[uid] and data[uid][today]:
-            msg = f"📈 **تقرير عمر اليوم ({today}):**\n\n"
-            for item in data[uid][today]:
-                msg += f"▫️ **{item['name']}**: {item['status']}\n"
-            bot.reply_to(message, msg)
+                ar_name = {'Fajr':'الفجر','Dhuhr':'الظهر','Asr':'العصر','Maghrib':'المغرب','Isha':'العشاء'}.get(p)
+                msg += f"🔹 {ar_name}: `{convert_to_12h(timings[p])}`\n"
+            bot.reply_to(message, msg, parse_mode="Markdown")
         else:
-            bot.reply_to(message, "التقرير فارغ.")
+            bot.reply_to(message, "عذراً، تعذر جلب المواقيت.")
 
-    elif text == "🗑️ تصفير البيانات":
-        clear_user_data(chat_id)
-        bot.reply_to(message, "تم مسح البيانات.", reply_markup=main_menu())
+    elif text == "🏆 نقاطي وإحصائياتي":
+        points, total_prayers = get_user_stats(chat_id)
+        msg = (
+            f"🏆 **لوحة الشرف الخاصة بك:**\n\n"
+            f"💰 النقاط الحالية: **{points}**\n"
+            f"🧎‍♂️ الصلوات المسجلة: **{total_prayers}**\n\n"
+            f"استمر في الطاعة لزيادة رصيدك عند الله ثم هنا! ❤️"
+        )
+        bot.reply_to(message, msg, parse_mode="Markdown")
 
-    elif text == "🏆 إحصائياتي":
-        data = load_json(DB_FILE)
-        uid = str(chat_id)
-        today = datetime.now().strftime("%Y-%m-%d")
-        if uid in data and today in data[uid] and data[uid][today]:
-            total = len(data[uid][today])
-            on_time = sum(1 for x in data[uid][today] if "🟢" in x['status'])
-            score = int((on_time / max(total, 1)) * 100)
-            bot.reply_to(message, f"🏆 نسبة التزامك: {score}%")
-        else:
-            bot.reply_to(message, "لا توجد بيانات.")
-
-    elif text == "☀️ أذكار الصباح":
-        start_dhikr_session(chat_id, 'morning')
+    elif text == "📝 تسجيل صلاة":
+        markup = types.InlineKeyboardMarkup(row_width=3)
+        btns = [
+            types.InlineKeyboardButton("الفجر", callback_data="rec_Fajr"),
+            types.InlineKeyboardButton("الظهر", callback_data="rec_Dhuhr"),
+            types.InlineKeyboardButton("العصر", callback_data="rec_Asr"),
+            types.InlineKeyboardButton("المغرب", callback_data="rec_Maghrib"),
+            types.InlineKeyboardButton("العشاء", callback_data="rec_Isha"),
+        ]
+        markup.add(*btns)
+        bot.reply_to(message, "ما هي الصلاة التي صليتها الآن؟", reply_markup=markup)
         
-    elif text == "🌙 أذكار المساء":
-        start_dhikr_session(chat_id, 'evening')
+    elif text == "💡 حديث عشوائي":
+        h = [
+            "قال ﷺ: (من صلى البردين دخل الجنة).",
+            "قال ﷺ: (الصلوات الخمس كفارة لما بينهن ما لم تغش الكبائر).",
+            "قال ﷺ: (أقرب ما يكون العبد من ربه وهو ساجد)."
+        ]
+        bot.reply_to(message, f"💡 **حديث شريف:**\n\n{random.choice(h)}")
 
-@bot.callback_query_handler(func=lambda call: call.data == "zkr_count")
-def handle_counter(call):
-    chat_id = call.message.chat.id
-    session = sessions.get(chat_id)
-    if not session:
-        bot.answer_callback_query(call.id, "انتهت الجلسة.")
-        return
-
-    session['count'] += 1
-    zkr_list = AZKAR_DB[session['type']]
-    index = session['index']
-    required = zkr_list[index]['c']
+@bot.callback_query_handler(func=lambda call: call.data.startswith('rec_'))
+def callback_record(call):
+    prayer_code = call.data.split('_')[1] # استخراج اسم الصلاة
+    ar_names = {'Fajr':'الفجر','Dhuhr':'الظهر','Asr':'العصر','Maghrib':'المغرب','Isha':'العشاء'}
+    prayer_name = ar_names.get(prayer_code, prayer_code)
     
-    if session['count'] >= required:
-        session['index'] += 1
-        session['count'] = 0
-        if session['index'] < len(zkr_list):
-            try: bot.delete_message(chat_id, call.message.message_id)
-            except: pass
-            send_dhikr_card(chat_id)
-        else:
-            try: bot.delete_message(chat_id, call.message.message_id)
-            except: pass
-            send_dhikr_card(chat_id)
+    # محاولة التسجيل في قاعدة البيانات
+    success = record_prayer(call.message.chat.id, prayer_code)
+    
+    if success:
+        bot.answer_callback_query(call.id, f"✅ تم تسجيل صلاة {prayer_name} (+10 نقاط)")
+        bot.edit_message_text(f"✅ **تم تسجيل صلاة {prayer_name} بنجاح!**\nجزاك الله خيراً وزادك من فضله.", 
+                              call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     else:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(f"سبح ({session['count']}/{required}) 👆", callback_data="zkr_count"))
-        bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        bot.answer_callback_query(call.id, "⚠️ هذه الصلاة مسجلة مسبقاً لهذا اليوم!", show_alert=True)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('done_'))
-def handle_prayer_log(call):
-    try:
-        action = call.data
-        timings = get_prayers_raw()
-        prayer_map = {
-            'done_Fajr': ('صلاة الفجر', timings['Fajr'] if timings else None),
-            'done_Dhuhr': ('صلاة الظهر', timings['Dhuhr'] if timings else None),
-            'done_Asr': ('صلاة العصر', timings['Asr'] if timings else None),
-            'done_Maghrib': ('صلاة المغرب', timings['Maghrib'] if timings else None),
-            'done_Isha': ('صلاة العشاء', timings['Isha'] if timings else None),
-        }
-        if action in prayer_map:
-            name, p_time = prayer_map[action]
-            status = calculate_delay(p_time) if p_time else "تم"
-            log_activity(call.from_user.id, name, status)
-            bot.answer_callback_query(call.id, f"تم تسجيل {name} ({status})", show_alert=True)
-    except:
-        pass
-
-def name_to_ar(name):
-    maps = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
-    return maps.get(name, name)
-
-def schedule_checker():
-    while True:
-        try:
-            now = get_egypt_time()
-            if now.second < 5:
-                timings = get_prayers_raw()
-                if timings:
-                    for name, time_str in timings.items():
-                        if name in ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']:
-                            p_time = datetime.strptime(time_str, "%H:%M")
-                            p_now = now.replace(hour=p_time.hour, minute=p_time.minute, second=0)
-                            diff_min = (p_now - now).total_seconds() / 60
-                            if 9.5 < diff_min < 10.5:
-                                send_broadcast(f"⏳ باقي 10 دقائق على صلاة {name_to_ar(name)} يا عمر!")
-                                time.sleep(60)
-        except: pass
-        time.sleep(10)
-
-def send_broadcast(text):
-    users = load_json(USERS_FILE)
-    for chat_id in users:
-        try: bot.send_message(chat_id, text)
-        except: pass
-
-keep_alive()
-
-bot.infinity_polling()
+# --- 6. تشغيل السيرفر ---
+if __name__ == "__main__":
+    keep_alive()
+    bot.infinity_polling()
