@@ -12,7 +12,7 @@ from pymongo import MongoClient
 
 # --- 1. إعدادات الاتصال بقاعدة البيانات (MongoDB) ---
 # هذا هو الرابط السحري الخاص بك
-MONGO_URL = "mongodb+srv://omarxazzam_db_user:Vg4JEVwQUdqkvBaP@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
+MONGO_URL = "mongodb+srv://omarxazzam:Omar12345@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
 
 try:
     # محاولة الاتصال بالقاعدة
@@ -216,3 +216,4 @@ def callback_record(call):
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling()
+
