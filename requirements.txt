@@ -1,3 +1,6 @@
 pyTelegramBotAPI
 flask
 requests
+pymongo
+dnspython
+hijri-converter
