@@ -5,8 +5,7 @@ from threading import Thread
 import os
 import time
 import random
-from datetime import datetime
-from hijri_converter import convert
+from datetime import datetime, timedelta
 import pymongo
 from pymongo import MongoClient
 import requests
@@ -22,34 +21,34 @@ try:
 except Exception as e:
     print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
 
-# --- 2. رسائل التشجيع والمحاسبة ---
+# --- 2. البيانات والنصوص (كاملة وغير مختصرة) ---
+
+# رسائل التشجيع والمحاسبة
 GOOD_MSGS = [
-    "يا مقلب القلوب ثبت قلبي على دينك.",
-    "استمر يا بطل، فالجنة سلعة الله الغالية.",
-    "ما شاء الله.. زادك الله حرصاً وتوفيقاً.",
-    "أحب الأعمال إلى الله أدومها وإن قل.",
-    "بيض الله وجهك يوم تبيض وجوه وتسود وجوه.",
-    "هذا من فضل ربي.. حافظ على هذا النور.",
-    "اللهم كما أنعمت عليه بالطاعة فأتمم عليه بالقبول.",
-    "سيروا إلى الله عرجاً ومكاسير.. ولا تنتظروا الصحة فإن انتظار الصحة بطالة.",
-    "اثبت.. فإن الموعد الجنة بإذن الله.",
-    "رزقك الله لذة النظر إلى وجهه الكريم."
+    "يا مقلب القلوب ثبت قلبي على دينك.", "استمر يا بطل، فالجنة سلعة الله الغالية.",
+    "ما شاء الله.. زادك الله حرصاً وتوفيقاً.", "أحب الأعمال إلى الله أدومها وإن قل.",
+    "بيض الله وجهك يوم تبيض وجوه."
 ]
-
 BAD_MSGS = [
-    "وَالَّذِينَ جَاهَدُوا فِينَا لَنَهْدِيَنَّهُمْ سُبُلَنَا.. جاهد نفسك يا عزام!",
-    "ألم يأن للذين آمنوا أن تخشع قلوبهم لذكر الله؟",
-    "تدارك نفسك قبل فوات الأوان، الصلاة هي الصلة.",
-    "الجنة حلوة.. وتستاهل التعب، لا تكسل.",
-    "يا ابن آدم، لو بلغت ذنوبك عنان السماء ثم استغفرتني غفرت لك.",
-    "من ترك الصلاة فقد برئت منه ذمة الله.. راجع نفسك.",
-    "قم الآن وتوضأ.. واكسر حاجز الشيطان.",
-    "الدنيا ساعة.. فاجعلها طاعة.",
-    "ماذا ستقول لربك غداً؟ استعد للقاء.",
-    "إن الصلاة كانت على المؤمنين كتاباً موقوتاً."
+    "جاهد نفسك يا عزام!", "ألم يأن للذين آمنوا أن تخشع قلوبهم؟",
+    "تدارك نفسك قبل فوات الأوان.", "الصلاة هي الصلة، لا تقطعها."
 ]
 
-# --- 3. بيانات الأذكار (كاملة 100%) ---
+# أسماء الله الحسنى
+NAMES_OF_ALLAH = [
+    {"name": "الرَحْمَن", "meaning": "المتّصف بالرحمة الواسعة التي شملت كل شيء."},
+    {"name": "المَلِك", "meaning": "المالك لكل شيء، المتصرف في ملكه كيف يشاء."},
+    {"name": "القُدّوس", "meaning": "المنزّه عن كل نقص وعيب."},
+    {"name": "السَلام", "meaning": "الذي سلم من كل عيب، وسلم عباده من المهالك."},
+    {"name": "المُؤْمِن", "meaning": "المصدق لرسله، والذي يأمن عباده من عذابه."},
+    {"name": "العَزِيز", "meaning": "القوي الغالب الذي لا يُغلب."},
+    {"name": "الجَبّار", "meaning": "الذي يجبر قلوب المنكسرين، ويقهر الجبابرة."},
+    {"name": "الرَزّاق", "meaning": "المتكفل برزق جميع المخلوقات."},
+    {"name": "الفَتّاح", "meaning": "الذي يفتح أبواب الرحمة والرزق لعباده."},
+    {"name": "العَلِيم", "meaning": "الذي أحاط علمه بكل شيء، ظاهراً وباطناً."}
+]
+
+# أذكار الصباح (كاملة)
 MORNING_ADHKAR = [
     {
         "text": " أعوذ بالله من الشيطان الرجيم\n💎 **آية الكرسي:**\n{اللّهُ لاَ إِلَـهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ لاَ تَأْخُذُهُ سِنَةٌ وَلاَ نَوْمٌ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الأَرْضِ مَن ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلاَّ بِإِذْنِهِ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ وَلاَ يُحِيطُونَ بِشَيْءٍ مِّنْ عِلْمِهِ إِلاَّ بِمَا شَاء وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالأَرْضَ وَلاَ يَؤُودُهُ حِفْظُهُمَا وَهُوَ الْعَلِيُّ الْعَظِيمُ}",
@@ -76,7 +75,7 @@ MORNING_ADHKAR = [
         "count": 1
     },
     {
-        "text": "اللهم أنت ربي لا إله إلا أنت خلقتني وأنا عبدك وأنا على عهدك ووعدك ما استطعت أعوذ بك من شر ما صنعت أبوء لك بنعمتك علي وأبوء بذنبي فاغفر لي فإنه لا يغفر الذنوب إلا أنت.",
+        "text": "اللهم أنت ربي لا إله إلا أنت خلقتني وأنا عبدك وأنا على عهدك ووعدك ما استطعت أعوذ بك من شر ما صنعت أبوء لك بنعمتك علي وأبوء بذنبي فاغفر لي فإنه لا يغفر الذنوب إلا أنت. (سيد الاستغفار)",
         "count": 1
     },
     {
@@ -89,6 +88,7 @@ MORNING_ADHKAR = [
     }
 ]
 
+# أذكار المساء (كاملة)
 EVENING_ADHKAR = [
     {
         "text": " أعوذ بالله من الشيطان الرجيم\n💎 **آية الكرسي:**\n{اللّهُ لاَ إِلَـهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ لاَ تَأْخُذُهُ سِنَةٌ وَلاَ نَوْمٌ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الأَرْضِ مَن ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلاَّ بِإِذْنِهِ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ وَلاَ يُحِيطُونَ بِشَيْءٍ مِّنْ عِلْمِهِ إِلاَّ بِمَا شَاء وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالأَرْضَ وَلاَ يَؤُودُهُ حِفْظُهُمَا وَهُوَ الْعَلِيُّ الْعَظِيمُ}",
@@ -115,7 +115,7 @@ EVENING_ADHKAR = [
         "count": 1
     },
     {
-        "text": "اللهم أنت ربي لا إله إلا أنت خلقتني وأنا عبدك وأنا على عهدك ووعدك ما استطعت أعوذ بك من شر ما صنعت أبوء لك بنعمتك علي وأبوء بذنبي فاغفر لي فإنه لا يغفر الذنوب إلا أنت.",
+        "text": "اللهم أنت ربي لا إله إلا أنت خلقتني وأنا عبدك وأنا على عهدك ووعدك ما استطعت أعوذ بك من شر ما صنعت أبوء لك بنعمتك علي وأبوء بذنبي فاغفر لي فإنه لا يغفر الذنوب إلا أنت. (سيد الاستغفار)",
         "count": 1
     },
     {
@@ -132,10 +132,38 @@ EVENING_ADHKAR = [
     }
 ]
 
+# أذكار النوم (كاملة)
+SLEEP_ADHKAR = [
+    {
+        "text": "🛏️ **آية الكرسي:**\n{اللّهُ لاَ إِلَـهَ إِلاَّ هُوَ الْحَيُّ الْقَيُّومُ لاَ تَأْخُذُهُ سِنَةٌ وَلاَ نَوْمٌ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الأَرْضِ مَن ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلاَّ بِإِذْنِهِ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ وَلاَ يُحِيطُونَ بِشَيْءٍ مِّنْ عِلْمِهِ إِلاَّ بِمَا شَاء وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالأَرْضَ وَلاَ يَؤُودُهُ حِفْظُهُمَا وَهُوَ الْعَلِيُّ الْعَظِيمُ}",
+        "count": 1
+    },
+    {
+        "text": "🛏️ **يجمع كفيه وينفث فيهما ويقرأ:**\n(سورة الإخلاص، سورة الفلق، سورة الناس)\nثم يمسح بهما ما استطاع من جسده. (يفعل ذلك 3 مرات)",
+        "count": 3
+    },
+    {
+        "text": "بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا.",
+        "count": 1
+    },
+    {
+        "text": "اللَّهُمَّ أَسْلَمْتُ نَفْسِي إِلَيْكَ، وَفَوَّضْتُ أَمْرِي إِلَيْكَ، وَوَجَّهْتُ وَجْهِي إِلَيْكَ، وَأَلْجَأْتُ ظَهْرِي إِلَيْكَ، رَغْبَةً وَرَهْبَةً إِلَيْكَ، لَا مَلْجَأَ وَلَا مَنْجَا مِنْكَ إِلَّا إِلَيْكَ، آمَنْتُ بِكِتَابِكَ الَّذِي أَنْزَلْتَ، وَبِنَبِيِّكَ الَّذِي أَرْسَلْتَ.",
+        "count": 1
+    },
+    {
+        "text": "اللَّهُمَّ قِنِي عَذَابَكَ يَوْمَ تَبْعَثُ عِبَادَكَ. (3 مرات)",
+        "count": 3
+    },
+    {
+        "text": "سُبْحَانَ اللَّهِ (33 مرة)، وَالْحَمْدُ لِلَّهِ (33 مرة)، وَاللَّهُ أَكْبَرُ (34 مرة).",
+        "count": 1
+    }
+]
+
 # --- 4. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V10.0 (Perfect Edition) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V14.0 (The Complete Edition) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -143,102 +171,113 @@ TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 user_adhkar_state = {}
 
-# --- 5. وظائف النظام والتحويل ---
+# --- 5. وظائف النظام والوقت ---
 def convert_to_12h(time_24):
-    """تحويل الوقت من 24 ساعة إلى 12 ساعة (ص/م)"""
     try:
         t = datetime.strptime(time_24, "%H:%M")
         return t.strftime("%I:%M %p").replace("AM", "ص").replace("PM", "م")
-    except:
-        return time_24
+    except: return time_24
+
+def get_prayer_timings():
+    try:
+        return requests.get("http://api.aladhan.com/v1/timingsByCity?city=Cairo&country=Egypt&method=5", timeout=3).json()['data']['timings']
+    except: return None
+
+def get_next_prayer_info():
+    timings = get_prayer_timings()
+    if not timings: return "تعذر جلب المواقيت."
+    
+    now = datetime.now()
+    prayer_names = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
+    
+    today_prayers = []
+    for key in ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']:
+        p_time = datetime.strptime(timings[key], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+        today_prayers.append((key, p_time))
+    
+    for key, p_time in today_prayers:
+        if p_time > now:
+            diff = p_time - now
+            hours = diff.seconds // 3600
+            minutes = (diff.seconds % 3600) // 60
+            return f"⏳ **الصلاة القادمة:** {prayer_names[key]}\n⏱️ **متبقي:** {hours} ساعة و {minutes} دقيقة"
+    
+    fajr_tomorrow = today_prayers[0][1] + timedelta(days=1)
+    diff = fajr_tomorrow - now
+    hours = diff.seconds // 3600
+    minutes = (diff.seconds % 3600) // 60
+    return f"⏳ **الصلاة القادمة:** الفجر (غداً)\n⏱️ **متبقي:** {hours} ساعة و {minutes} دقيقة"
 
 def start_auto_reminders():
     def remind_prophet():
         while True:
-            time.sleep(1800) 
-            users = users_collection.find({})
-            for user in users:
+            time.sleep(1800) # 30 دقيقة
+            for user in users_collection.find({}):
                 try: bot.send_message(user['_id'], "🌸 **تذكير:**\nاللهم صلِّ وسلم على نبينا محمد ﷺ")
                 except: pass
-
     def remind_dhikr():
         while True:
-            time.sleep(2400)
+            time.sleep(2400) # 40 دقيقة
             msg = random.choice(["لا إله إلا الله", "سبحان الله العظيم", "أستغفر الله وأتوب إليه"])
-            users = users_collection.find({})
-            for user in users:
+            for user in users_collection.find({}):
                 try: bot.send_message(user['_id'], f"✨ **ذكر الله:**\n{msg}")
                 except: pass
-
-    t1 = Thread(target=remind_prophet); t1.start()
-    t2 = Thread(target=remind_dhikr); t2.start()
-
-def get_prayer_timings():
-    try:
-        url = "http://api.aladhan.com/v1/timingsByCity?city=Cairo&country=Egypt&method=5"
-        return requests.get(url, timeout=3).json()['data']['timings']
-    except: return None
+    Thread(target=remind_prophet).start()
+    Thread(target=remind_dhikr).start()
 
 def register_user(chat_id, name):
     cid = str(chat_id)
     if not users_collection.find_one({"_id": cid}):
-        users_collection.insert_one({"_id": cid, "name": name, "join_date": datetime.now().strftime("%Y-%m-%d"), "points": 0})
+        users_collection.insert_one({"_id": cid, "name": name, "join_date": datetime.now().strftime("%Y-%m-%d"), "points": 0, "total_tasbeeh": 0})
 
 def get_today_report(chat_id):
     today = datetime.now().strftime("%Y-%m-%d")
     user = users_collection.find_one({"_id": str(chat_id)})
-    
     if not user: return "لا توجد بيانات."
     
     prayers_done = user.get('prayers', {}).get(today, {})
-    required_prayers = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
-    
-    report_msg = f"📅 **تقرير اليوم ({today}):**\n\n"
-    done_count = 0
-    
-    for key, name in required_prayers.items():
-        if key in prayers_done:
-            # عرض وقت التسجيل بنظام 12 ساعة أيضاً
-            rec_time = prayers_done[key].get("time", "تم")
-            rec_time_12 = convert_to_12h(rec_time)
-            report_msg += f"✅ {name} (تم: {rec_time_12})\n"
-            done_count += 1
-        else:
-            report_msg += f"❌ {name}\n"
-            
-    total_required = 5
-    ratio = done_count / total_required
-    
-    report_msg += "\n➖➖➖➖➖➖\n"
-    
-    if ratio >= 0.6: 
-        quote = random.choice(GOOD_MSGS)
-        report_msg += f"🌟 **رسالة لك:**\n{quote}"
-    else: 
-        quote = random.choice(BAD_MSGS)
-        report_msg += f"⚠️ **رسالة تنبيه:**\n{quote}"
-        
-    return report_msg
+    req = {'Fajr':'الفجر','Dhuhr':'الظهر','Asr':'العصر','Maghrib':'المغرب','Isha':'العشاء'}
+    msg = f"📅 **تقرير اليوم ({today}):**\n\n"
+    count = 0
+    for k, v in req.items():
+        if k in prayers_done:
+            msg += f"✅ {v} ({convert_to_12h(prayers_done[k].get('time'))})\n"
+            count += 1
+        else: msg += f"❌ {v}\n"
+    msg += "\n➖➖➖➖➖➖\n"
+    msg += f"🌟 **رسالة لك:**\n{random.choice(GOOD_MSGS)}" if count >= 3 else f"⚠️ **تنبيه:**\n{random.choice(BAD_MSGS)}"
+    return msg
 
 # --- 6. القوائم والتفاعل ---
 def main_menu():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add(types.KeyboardButton("⏳ كم باقي على الصلاة؟"))
     markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📝 تسجيل العبادات"))
     markup.add(types.KeyboardButton("☀️ أذكار الصباح"), types.KeyboardButton("🌙 أذكار المساء"))
-    markup.add(types.KeyboardButton("📊 تقريري اليومي")) 
+    markup.add(types.KeyboardButton("😴 أذكار النوم"), types.KeyboardButton("📊 تقريري اليومي"))
+    markup.add(types.KeyboardButton("📿 السبحة الإلكترونية"), types.KeyboardButton("✨ أسماء الله الحسنى"))
+    
+    # ميزة الجمعة
+    if datetime.now().weekday() == 4: # Friday
+        markup.add(types.KeyboardButton("📖 سورة الكهف"))
+        
     return markup
 
 @bot.message_handler(commands=['start'])
 def start(message):
     register_user(message.chat.id, message.from_user.first_name)
-    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\nتم تحديث الوقت (12 ساعة) وأذكار المساء الكاملة ✅", reply_markup=main_menu(), parse_mode="Markdown")
+    next_p = get_next_prayer_info()
+    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}", reply_markup=main_menu(), parse_mode="Markdown")
 
 # --- معالجة الأذكار ---
 def send_dhikr(chat_id, dhikr_type, index):
-    lst = MORNING_ADHKAR if dhikr_type == "morning" else EVENING_ADHKAR
+    if dhikr_type == "morning": lst, title = MORNING_ADHKAR, "☀️ الصباح"
+    elif dhikr_type == "evening": lst, title = EVENING_ADHKAR, "🌙 المساء"
+    else: lst, title = SLEEP_ADHKAR, "😴 النوم"
+
     if index >= len(lst):
-        bot.send_message(chat_id, "🎉 **تم بحمد الله!**\nتقبل الله طاعتك.", parse_mode="Markdown")
-        del user_adhkar_state[chat_id]
+        bot.send_message(chat_id, "🎉 **تم بحمد الله!**", parse_mode="Markdown")
+        if chat_id in user_adhkar_state: del user_adhkar_state[chat_id]
         return
 
     dhikr = lst[index]
@@ -248,7 +287,6 @@ def send_dhikr(chat_id, dhikr_type, index):
     markup.add(types.InlineKeyboardButton(f"📿 العدد: {dhikr['count']}", callback_data="cnt"))
     if index > 0: markup.add(types.InlineKeyboardButton("⬅️ السابق", callback_data="prev"))
     
-    title = "☀️ الصباح" if dhikr_type == "morning" else "🌙 المساء"
     bot.send_message(chat_id, f"**{title} ({index+1}/{len(lst)})**\n\n{dhikr['text']}", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data == "cnt")
@@ -274,14 +312,43 @@ def prev_dhikr(c):
         bot.delete_message(cid, c.message.message_id)
         send_dhikr(cid, st['type'], st['index'] - 1)
 
-# --- معالجة الأوامر ---
+# --- معالجة الأوامر والمميزات ---
+@bot.callback_query_handler(func=lambda c: c.data == "tasbeeh_inc")
+def tasbeeh_increment(call):
+    cid = str(call.message.chat.id)
+    users_collection.update_one({"_id": cid}, {"$inc": {"total_tasbeeh": 1}}, upsert=True)
+    user = users_collection.find_one({"_id": cid})
+    total = user.get("total_tasbeeh", 1)
+    bot.answer_callback_query(call.id, f"سبحان الله ({total})")
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(f"📿 سبّح ({total})", callback_data="tasbeeh_inc"))
+    bot.edit_message_reply_markup(cid, call.message.message_id, reply_markup=markup)
+
 @bot.message_handler(func=lambda m: True)
 def handle_all(m):
     text = m.text
     cid = m.chat.id
     
-    if text == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
+    if text == "⏳ كم باقي على الصلاة؟":
+        bot.reply_to(m, get_next_prayer_info(), parse_mode="Markdown")
+
+    elif text == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
     elif text == "🌙 أذكار المساء": send_dhikr(cid, "evening", 0)
+    elif text == "😴 أذكار النوم": send_dhikr(cid, "sleep", 0)
+    
+    elif text == "📿 السبحة الإلكترونية":
+        user = users_collection.find_one({"_id": str(cid)})
+        total = user.get("total_tasbeeh", 0) if user else 0
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton(f"📿 سبّح ({total})", callback_data="tasbeeh_inc"))
+        bot.reply_to(m, "اضغط للتسبيح، وسيتم حفظ العدد:", reply_markup=markup)
+
+    elif text == "✨ أسماء الله الحسنى":
+        d = random.choice(NAMES_OF_ALLAH)
+        bot.reply_to(m, f"✨ **{d['name']}**\n\n📖 المعنى: {d['meaning']}", parse_mode="Markdown")
+
+    elif text == "📖 سورة الكهف":
+        bot.reply_to(m, "📖 **سورة الكهف:**\nاقرأها الآن: https://quran.com/18\n\n(نور ما بين الجمعتين)")
     
     elif text == "📝 تسجيل العبادات":
         markup = types.InlineKeyboardMarkup(row_width=3)
@@ -293,7 +360,6 @@ def handle_all(m):
         t = get_prayer_timings()
         if t:
             msg = "🕌 **المواقيت (اليوم):**\n"
-            # استخدام دالة التحويل هنا
             for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']: 
                 msg += f"🔹 {k}: {convert_to_12h(t[k])}\n"
             bot.reply_to(m, msg)
@@ -307,10 +373,7 @@ def rec_prayer(c):
     cid = str(c.message.chat.id)
     p_name = c.data.split('_')[1]
     dt = datetime.now().strftime("%Y-%m-%d")
-    
-    users_collection.update_one({"_id": cid}, 
-        {"$set": {f"prayers.{dt}.{p_name}": {"time": datetime.now().strftime("%H:%M")}}}, upsert=True)
-         
+    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": datetime.now().strftime("%H:%M")}}}, upsert=True)
     bot.edit_message_text(f"✅ تم تسجيل {p_name}\nتقبل الله منك.", c.message.chat.id, c.message.message_id)
 
 if __name__ == "__main__":
