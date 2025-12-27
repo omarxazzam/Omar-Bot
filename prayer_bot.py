@@ -11,42 +11,45 @@ from pymongo import MongoClient
 import requests
 import google.generativeai as genai
 
-# --- 1. إعدادات المفاتيح والاتصال ---
+# --- 1. إعدادات المفاتيح والاتصال (الوضع الآمن) ---
 
-# 🛑 ضع مفتاح جوجل هنا بين علامات التنصيص
-GEMINI_API_KEY = "ضع_مفتاح_جوجل_هنا_بين_علامات_التنصيص"
+# جلب مفتاح الذكاء الاصطناعي من متغيرات النظام (Render Environment Variables)
+# لن تحتاج لكتابة المفتاح هنا، سيأخذه البوت من إعدادات السيرفر مباشرة
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 # إعداد قاعدة البيانات
 MONGO_URL = "mongodb+srv://omarxazzam:Omar12345@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
 
 # تهيئة الذكاء الاصطناعي
 try:
-    # محاولة جلب المفتاح من متغيرات النظام أو استخدام المكتوب مباشرة
-    api_key = os.environ.get('GEMINI_API_KEY', GEMINI_API_KEY)
-    genai.configure(api_key=api_key)
-    
-    # إعداد شخصية البوت
-    generation_config = {
-        "temperature": 0.7,
-        "top_p": 0.95,
-        "max_output_tokens": 1000,
-    }
-    
-    system_instruction = """
-    أنت مساعد إسلامي ذكي ومؤدب اسمه 'عزام AI'.
-    دورك هو مساعدة المستخدمين في أمور دينهم ودنياهم بأسلوب لطيف ومشجع باللهجة المصرية القريبة للفصحى.
-    القواعد:
-    1. استشهد بالآيات القرآنية والأحاديث الصحيحة كلما أمكن.
-    2. في مسائل الفتاوى المعقدة (حلال وحرام)، انصح المستخدم بسؤال عالم متخصص وقل 'والله أعلم'.
-    3. كن مواسياً ومشجعاً دائماً على الخير والطاعة.
-    """
-    
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        generation_config=generation_config,
-        system_instruction=system_instruction
-    )
-    print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # إعداد شخصية البوت
+        generation_config = {
+            "temperature": 0.7,
+            "top_p": 0.95,
+            "max_output_tokens": 1000,
+        }
+        
+        system_instruction = """
+        أنت مساعد إسلامي ذكي ومؤدب اسمه 'عزام AI'.
+        دورك هو مساعدة المستخدمين في أمور دينهم ودنياهم بأسلوب لطيف ومشجع باللهجة المصرية القريبة للفصحى.
+        القواعد:
+        1. استشهد بالآيات القرآنية والأحاديث الصحيحة كلما أمكن.
+        2. في مسائل الفتاوى المعقدة (حلال وحرام)، انصح المستخدم بسؤال عالم متخصص وقل 'والله أعلم'.
+        3. كن مواسياً ومشجعاً دائماً على الخير والطاعة.
+        """
+        
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            generation_config=generation_config,
+            system_instruction=system_instruction
+        )
+        print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
+    else:
+        print("⚠️ تحذير: لم يتم العثور على مفتاح GEMINI_API_KEY في متغيرات النظام.")
+        model = None
 except Exception as e:
     print(f"⚠️ تحذير: مشكلة في إعداد الذكاء الاصطناعي: {e}")
     model = None
@@ -60,7 +63,7 @@ try:
 except Exception as e:
     print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
 
-# --- 2. البيانات والنصوص (كاملة 100% كما طلبت) ---
+# --- 2. البيانات والنصوص (كاملة 100% بدون اختصار) ---
 
 # رسائل التشجيع والمحاسبة
 GOOD_MSGS = [
@@ -188,7 +191,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V16.0 (AI + Cairo Fix) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V17.0 (Secure & Complete) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -391,8 +394,7 @@ def handle_all(m):
                 bot.reply_to(m, "⚠️ عذراً، حدث خطأ بسيط في الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.")
                 print(f"AI Error: {e}")
         else:
-            # لو المفتاح مش محطوط أو فيه مشكلة
-            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة حالياً (تأكد من المفتاح).")
+            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة حالياً (تأكد من إعدادات المفتاح في Render).")
 
 if __name__ == "__main__":
     keep_alive()
