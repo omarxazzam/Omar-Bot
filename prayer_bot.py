@@ -10,30 +10,24 @@ import pymongo
 from pymongo import MongoClient
 import requests
 import google.generativeai as genai
-# استيراد إعدادات الأمان
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # --- 1. إعدادات المفاتيح والاتصال ---
-
-# جلب مفتاح الذكاء الاصطناعي من إعدادات Render
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-
-# إعداد قاعدة البيانات
 MONGO_URL = "mongodb+srv://omarxazzam:Omar12345@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
 
-# تهيئة الذكاء الاصطناعي (مع إعدادات الأمان الكاملة)
+# تهيئة الذكاء الاصطناعي (Gemini 2.5 Flash)
 try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
         
-        # إعداد شخصية البوت
         generation_config = {
             "temperature": 0.7,
             "top_p": 0.95,
             "max_output_tokens": 1000,
         }
         
-        # 🟢 إلغاء فلاتر الأمان للسماح بجميع الردود الطبيعية
+        # إلغاء فلاتر الأمان
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -41,18 +35,17 @@ try:
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
         
-        # استخدام الموديل المتوفر والمستقر
+        # 🟢 استخدام الموديل الأحدث الموجود في قائمتك
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-2.5-flash",
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
+        print("✅ تم تفعيل الذكاء الاصطناعي (Gemini 2.5 Flash) بنجاح!")
     else:
-        print("⚠️ تحذير: لم يتم العثور على مفتاح GEMINI_API_KEY")
         model = None
 except Exception as e:
-    print(f"⚠️ تحذير: مشكلة في إعداد الذكاء الاصطناعي: {e}")
+    print(f"⚠️ مشكلة AI: {e}")
     model = None
 
 # الاتصال بقاعدة البيانات
@@ -60,12 +53,9 @@ try:
     client = MongoClient(MONGO_URL)
     db = client['omar_bot_db']
     users_collection = db['users']
-    print("✅ تم الاتصال بقاعدة البيانات بنجاح!")
-except Exception as e:
-    print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
+except Exception as e: pass
 
-# --- 2. البيانات والنصوص (كاملة 100%) ---
-
+# --- 2. البيانات والنصوص ---
 GOOD_MSGS = ["يا مقلب القلوب ثبت قلبي.", "استمر يا بطل.", "ما شاء الله.", "أحب الأعمال أدومها.", "بيض الله وجهك."]
 BAD_MSGS = ["جاهد نفسك.", "ألم يأن للذين آمنوا؟", "تدارك نفسك.", "الصلاة هي الصلة."]
 
@@ -109,7 +99,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V23.0 (Fixed AI Response) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V24.0 (Gemini 2.5 Flash) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -117,14 +107,11 @@ TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 user_adhkar_state = {}
 
-# --- 4. وظائف النظام والوقت ---
-def get_cairo_time():
-    return datetime.utcnow() + timedelta(hours=2)
+# --- 4. الوظائف ---
+def get_cairo_time(): return datetime.utcnow() + timedelta(hours=2)
 
 def convert_to_12h(time_24):
-    try:
-        t = datetime.strptime(time_24, "%H:%M")
-        return t.strftime("%I:%M %p").replace("AM", "ص").replace("PM", "م")
+    try: return datetime.strptime(time_24, "%H:%M").strftime("%I:%M %p").replace("AM", "ص").replace("PM", "م")
     except: return time_24
 
 def get_prayer_timings():
@@ -132,179 +119,123 @@ def get_prayer_timings():
     except: return None
 
 def get_next_prayer_info():
-    timings = get_prayer_timings()
-    if not timings: return "تعذر جلب المواقيت."
-    
+    t = get_prayer_timings()
+    if not t: return "تعذر جلب المواقيت."
     now = get_cairo_time()
-    prayer_names = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
-    
-    today_prayers = []
-    for key in ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']:
-        p_time = datetime.strptime(timings[key], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        today_prayers.append((key, p_time))
-    
-    for key, p_time in today_prayers:
-        if p_time > now:
-            diff = p_time - now
-            hours = diff.seconds // 3600
-            minutes = (diff.seconds % 3600) // 60
-            return f"⏳ **الصلاة القادمة:** {prayer_names[key]}\n⏱️ **متبقي:** {hours} ساعة و {minutes} دقيقة"
-    
-    fajr_tomorrow = today_prayers[0][1] + timedelta(days=1)
-    diff = fajr_tomorrow - now
-    hours = diff.seconds // 3600
-    minutes = (diff.seconds % 3600) // 60
-    return f"⏳ **الصلاة القادمة:** الفجر (غداً)\n⏱️ **متبقي:** {hours} ساعة و {minutes} دقيقة"
+    for k, v in [('Fajr','الفجر'),('Dhuhr','الظهر'),('Asr','العصر'),('Maghrib','المغرب'),('Isha','العشاء')]:
+        pt = datetime.strptime(t[k], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+        if pt > now:
+            d = pt - now
+            return f"⏳ **الصلاة القادمة:** {v}\n⏱️ **متبقي:** {d.seconds//3600} ساعة و {(d.seconds%3600)//60} دقيقة"
+    return "⏳ **الصلاة القادمة:** الفجر (غداً)"
 
 def start_auto_reminders():
-    def remind_prophet():
+    def remind():
         while True:
-            time.sleep(1800) 
-            for user in users_collection.find({}):
-                try: bot.send_message(user['_id'], "🌸 **تذكير:**\nاللهم صلِّ وسلم على نبينا محمد ﷺ")
-                except: pass
-    def remind_dhikr():
-        while True:
-            time.sleep(2400) 
-            msg = random.choice(["لا إله إلا الله", "سبحان الله العظيم", "أستغفر الله وأتوب إليه"])
-            for user in users_collection.find({}):
-                try: bot.send_message(user['_id'], f"✨ **ذكر الله:**\n{msg}")
-                except: pass
-    Thread(target=remind_prophet).start()
-    Thread(target=remind_dhikr).start()
-
-def register_user(chat_id, name):
-    cid = str(chat_id)
-    if not users_collection.find_one({"_id": cid}):
-        users_collection.insert_one({"_id": cid, "name": name, "join_date": get_cairo_time().strftime("%Y-%m-%d"), "points": 0})
+            time.sleep(1800)
+            try:
+                for u in users_collection.find({}):
+                    bot.send_message(u['_id'], "🌸 صلِّ على النبي ﷺ")
+            except: pass
+    Thread(target=remind).start()
 
 def get_today_report(chat_id):
     now = get_cairo_time()
     today = now.strftime("%Y-%m-%d")
-    user = users_collection.find_one({"_id": str(chat_id)})
-    if not user: return "لا توجد بيانات."
-    
-    prayers_done = user.get('prayers', {}).get(today, {})
-    req = {'Fajr':'الفجر','Dhuhr':'الظهر','Asr':'العصر','Maghrib':'المغرب','Isha':'العشاء'}
-    msg = f"📅 **تقرير اليوم ({today}):**\n\n"
-    count = 0
-    for k, v in req.items():
-        if k in prayers_done:
-            msg += f"✅ {v} ({convert_to_12h(prayers_done[k].get('time'))})\n"
-            count += 1
-        else: msg += f"❌ {v}\n"
-    msg += "\n➖➖➖➖➖➖\n"
-    msg += f"🌟 **رسالة لك:**\n{random.choice(GOOD_MSGS)}" if count >= 3 else f"⚠️ **تنبيه:**\n{random.choice(BAD_MSGS)}"
+    u = users_collection.find_one({"_id": str(chat_id)})
+    if not u: return "لا بيانات."
+    done = u.get('prayers', {}).get(today, {})
+    msg = f"📅 **تقرير {today}:**\n"
+    c = 0
+    for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']:
+        if k in done:
+            msg += "✅\n"
+            c += 1
+        else: msg += "❌\n"
+    msg += f"\n{random.choice(GOOD_MSGS) if c>=3 else random.choice(BAD_MSGS)}"
     return msg
 
-# --- 5. القوائم والتفاعل ---
+# --- 5. التفاعل ---
 def main_menu():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton("⏳ كم باقي على الصلاة؟"))
-    markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📝 تسجيل العبادات"))
-    markup.add(types.KeyboardButton("☀️ أذكار الصباح"), types.KeyboardButton("🌙 أذكار المساء"))
-    markup.add(types.KeyboardButton("😴 أذكار النوم"), types.KeyboardButton("📊 تقريري اليومي"))
-    return markup
+    m = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    m.add("⏳ كم باقي على الصلاة؟", "🕌 مواقيت الصلاة", "📝 تسجيل العبادات", "☀️ أذكار الصباح", "🌙 أذكار المساء", "😴 أذكار النوم", "📊 تقريري اليومي")
+    return m
 
 @bot.message_handler(commands=['start'])
-def start(message):
-    register_user(message.chat.id, message.from_user.first_name)
-    next_p = get_next_prayer_info()
-    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}\n\n🤖 **ملاحظة:** أنا الآن مربوط بالذكاء الاصطناعي (Gemini 1.5 Flash)! اسألني عن أي شيء.", reply_markup=main_menu(), parse_mode="Markdown")
+def start(m):
+    cid = str(m.chat.id)
+    if not users_collection.find_one({"_id": cid}):
+        users_collection.insert_one({"_id": cid, "name": m.from_user.first_name, "join_date": get_cairo_time().strftime("%Y-%m-%d")})
+    bot.send_message(m.chat.id, f"أهلاً {m.from_user.first_name} 👋\n\n{get_next_prayer_info()}\n\n🤖 **مربوط بالموديل الأحدث (Gemini 2.5 Flash)!**", reply_markup=main_menu(), parse_mode="Markdown")
 
-# دالة الأذكار
-def send_dhikr(chat_id, dhikr_type, index):
-    if dhikr_type == "morning": lst, title = MORNING_ADHKAR, "☀️ الصباح"
-    elif dhikr_type == "evening": lst, title = EVENING_ADHKAR, "🌙 المساء"
-    else: lst, title = SLEEP_ADHKAR, "😴 النوم"
-
-    if index >= len(lst):
-        bot.send_message(chat_id, "🎉 **تم بحمد الله!**", parse_mode="Markdown")
+def send_dhikr(chat_id, type_d, idx):
+    if type_d == "morning": lst = MORNING_ADHKAR
+    elif type_d == "evening": lst = EVENING_ADHKAR
+    else: lst = SLEEP_ADHKAR
+    if idx >= len(lst):
+        bot.send_message(chat_id, "🎉 تم بحمد الله!")
         if chat_id in user_adhkar_state: del user_adhkar_state[chat_id]
         return
-
-    dhikr = lst[index]
-    user_adhkar_state[chat_id] = {'type': dhikr_type, 'index': index, 'count': dhikr['count']}
-    
+    user_adhkar_state[chat_id] = {'type': type_d, 'index': idx, 'count': lst[idx]['count']}
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton(f"📿 العدد: {dhikr['count']}", callback_data="cnt"))
-    if index > 0: markup.add(types.InlineKeyboardButton("⬅️ السابق", callback_data="prev"))
-    
-    bot.send_message(chat_id, f"**{title} ({index+1}/{len(lst)})**\n\n{dhikr['text']}", reply_markup=markup, parse_mode="Markdown")
+    markup.add(types.InlineKeyboardButton(f"📿 {lst[idx]['count']}", callback_data="cnt"))
+    bot.send_message(chat_id, lst[idx]['text'], reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data == "cnt")
-def count_dhikr_btn(call):
-    cid = call.message.chat.id
+def count(c):
+    cid = c.message.chat.id
     if cid not in user_adhkar_state: return
     st = user_adhkar_state[cid]
     st['count'] -= 1
     if st['count'] > 0:
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(f"📿 العدد: {st['count']}", callback_data="cnt"))
-        if st['index'] > 0: markup.add(types.InlineKeyboardButton("⬅️ السابق", callback_data="prev"))
-        bot.edit_message_reply_markup(cid, call.message.message_id, reply_markup=markup)
+        markup.add(types.InlineKeyboardButton(f"📿 {st['count']}", callback_data="cnt"))
+        bot.edit_message_reply_markup(cid, c.message.message_id, reply_markup=markup)
     else:
-        bot.delete_message(cid, call.message.message_id)
+        bot.delete_message(cid, c.message.message_id)
         send_dhikr(cid, st['type'], st['index'] + 1)
 
-@bot.callback_query_handler(func=lambda c: c.data == "prev")
-def prev_dhikr(c):
-    cid = c.message.chat.id
-    if cid in user_adhkar_state:
-        st = user_adhkar_state[cid]
-        bot.delete_message(cid, c.message.message_id)
-        send_dhikr(cid, st['type'], st['index'] - 1)
-
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rec_'))
-def rec_prayer(c):
+def rec(c):
     cid = str(c.message.chat.id)
-    p_name = c.data.split('_')[1]
-    now = get_cairo_time()
-    dt = now.strftime("%Y-%m-%d")
-    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": now.strftime("%H:%M")}}}, upsert=True)
-    bot.edit_message_text(f"✅ تم تسجيل {p_name}\nتقبل الله منك.", c.message.chat.id, c.message.message_id)
+    p = c.data.split('_')[1]
+    dt = get_cairo_time().strftime("%Y-%m-%d")
+    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p}": {"time": get_cairo_time().strftime("%H:%M")}}}, upsert=True)
+    bot.edit_message_text(f"✅ تم {p}", c.message.chat.id, c.message.message_id)
 
-# --- 6. الدالة الذكية (Handle All + AI) ---
+# --- 6. الدالة الذكية (بدون Parse Mode) ---
 @bot.message_handler(func=lambda m: True)
 def handle_all(m):
-    text = m.text
+    t = m.text
     cid = m.chat.id
-    
-    if text == "⏳ كم باقي على الصلاة؟":
-        bot.reply_to(m, get_next_prayer_info(), parse_mode="Markdown")
-    elif text == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
-    elif text == "🌙 أذكار المساء": send_dhikr(cid, "evening", 0)
-    elif text == "😴 أذكار النوم": send_dhikr(cid, "sleep", 0)
-    elif text == "📝 تسجيل العبادات":
+    if t == "⏳ كم باقي على الصلاة؟": bot.reply_to(m, get_next_prayer_info(), parse_mode="Markdown")
+    elif t == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
+    elif t == "🌙 أذكار المساء": send_dhikr(cid, "evening", 0)
+    elif t == "😴 أذكار النوم": send_dhikr(cid, "sleep", 0)
+    elif t == "🕌 مواقيت الصلاة":
+        pt = get_prayer_timings()
+        msg = "🕌 المواقيت:\n"
+        for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']: msg += f"{k}: {convert_to_12h(pt[k])}\n"
+        bot.reply_to(m, msg)
+    elif t == "📊 تقريري اليومي": bot.reply_to(m, get_today_report(cid), parse_mode="Markdown")
+    elif t == "📝 تسجيل العبادات":
         markup = types.InlineKeyboardMarkup(row_width=3)
-        btns = [types.InlineKeyboardButton(n, callback_data=f"rec_{e}") for n,e in [("الفجر","Fajr"),("الظهر","Dhuhr"),("العصر","Asr"),("المغرب","Maghrib"),("العشاء","Isha")]]
-        markup.add(*btns)
-        bot.reply_to(m, "سجل صلاتك:", reply_markup=markup)
-    elif text == "🕌 مواقيت الصلاة":
-        t = get_prayer_timings()
-        if t:
-            msg = "🕌 **المواقيت (اليوم):**\n"
-            for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']: 
-                msg += f"🔹 {k}: {convert_to_12h(t[k])}\n"
-            bot.reply_to(m, msg)
-    elif text == "📊 تقريري اليومي":
-        bot.reply_to(m, get_today_report(cid), parse_mode="Markdown")
+        markup.add(*[types.InlineKeyboardButton(n, callback_data=f"rec_{e}") for n,e in [("الفجر","Fajr"),("الظهر","Dhuhr"),("العصر","Asr"),("المغرب","Maghrib"),("العشاء","Isha")]])
+        bot.reply_to(m, "سجل:", reply_markup=markup)
     else:
-        # AI Logic
+        # AI Part
         if model:
             try:
                 bot.send_chat_action(cid, 'typing')
-                prompt = f"أنت مساعد إسلامي ذكي ومؤدب باللهجة المصرية. ساعد هذا المستخدم: {text}"
+                prompt = f"أنت مساعد إسلامي. رد على: {t}"
                 response = model.generate_content(prompt)
-                # 🛑 التغيير الجوهري: حذف parse_mode="Markdown" لمنع الأخطاء وضمان وصول الرسالة كاملة
+                
+                # 🛑 إرسال النص فقط بدون تنسيق لتجنب الأخطاء
                 bot.reply_to(m, response.text)
             except Exception as e:
-                # طباعة الخطأ الحقيقي للمستخدم (لأغراض التصحيح فقط)
-                error_msg = f"⚠️ حدث خطأ تقني: {str(e)}"
-                bot.reply_to(m, error_msg)
-                print(f"AI Error: {e}")
+                bot.reply_to(m, f"❌ خطأ: {str(e)}")
         else:
-            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة.")
+            bot.reply_to(m, "⚠️ خدمة AI غير مفعلة.")
 
 if __name__ == "__main__":
     keep_alive()
