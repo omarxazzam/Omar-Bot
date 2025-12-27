@@ -16,7 +16,7 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 MONGO_URL = "mongodb+srv://omarxazzam:Omar12345@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
 
-# تهيئة الذكاء الاصطناعي (Gemini 2.5 Flash)
+# تهيئة الذكاء الاصطناعي (Gemini 2.5 Flash - High Token Limit)
 try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -24,10 +24,10 @@ try:
         generation_config = {
             "temperature": 0.7,
             "top_p": 0.95,
-            "max_output_tokens": 1000,
+            # 🟢 زيادة الحد الأقصى للكلمات لضمان عدم انقطاع الرد
+            "max_output_tokens": 8000,
         }
         
-        # إلغاء فلاتر الأمان
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -35,13 +35,12 @@ try:
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
         
-        # 🟢 استخدام الموديل الأحدث الموجود في قائمتك
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        print("✅ تم تفعيل الذكاء الاصطناعي (Gemini 2.5 Flash) بنجاح!")
+        print("✅ تم تفعيل الذكاء الاصطناعي (Long Context) بنجاح!")
     else:
         model = None
 except Exception as e:
@@ -99,7 +98,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V24.0 (Gemini 2.5 Flash) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V25.0 (Long Messages Fixed) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -155,6 +154,15 @@ def get_today_report(chat_id):
     msg += f"\n{random.choice(GOOD_MSGS) if c>=3 else random.choice(BAD_MSGS)}"
     return msg
 
+# --- 🟢 دالة جديدة لتقسيم الرسائل الطويلة ---
+def send_long_message(chat_id, text):
+    if len(text) <= 4000:
+        bot.send_message(chat_id, text)
+    else:
+        # تقسيم الرسالة إلى أجزاء كل منها 4000 حرف
+        for x in range(0, len(text), 4000):
+            bot.send_message(chat_id, text[x:x+4000])
+
 # --- 5. التفاعل ---
 def main_menu():
     m = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -203,7 +211,7 @@ def rec(c):
     users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p}": {"time": get_cairo_time().strftime("%H:%M")}}}, upsert=True)
     bot.edit_message_text(f"✅ تم {p}", c.message.chat.id, c.message.message_id)
 
-# --- 6. الدالة الذكية (بدون Parse Mode) ---
+# --- 6. الدالة الذكية (Handle All) ---
 @bot.message_handler(func=lambda m: True)
 def handle_all(m):
     t = m.text
@@ -230,8 +238,9 @@ def handle_all(m):
                 prompt = f"أنت مساعد إسلامي. رد على: {t}"
                 response = model.generate_content(prompt)
                 
-                # 🛑 إرسال النص فقط بدون تنسيق لتجنب الأخطاء
-                bot.reply_to(m, response.text)
+                # 🛑 استخدام الدالة الجديدة لإرسال الرد حتى لو كان طويلاً جداً
+                send_long_message(cid, response.text)
+                
             except Exception as e:
                 bot.reply_to(m, f"❌ خطأ: {str(e)}")
         else:
