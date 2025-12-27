@@ -13,8 +13,7 @@ import google.generativeai as genai
 
 # --- 1. إعدادات المفاتيح والاتصال (الوضع الآمن) ---
 
-# جلب مفتاح الذكاء الاصطناعي من متغيرات النظام (Render Environment Variables)
-# لن تحتاج لكتابة المفتاح هنا، سيأخذه البوت من إعدادات السيرفر مباشرة
+# جلب مفتاح الذكاء الاصطناعي من إعدادات Render
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 # إعداد قاعدة البيانات
@@ -41,10 +40,12 @@ try:
         3. كن مواسياً ومشجعاً دائماً على الخير والطاعة.
         """
         
+        # 🔴 تم التغيير هنا إلى gemini-pro لضمان الاستقرار
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            generation_config=generation_config,
-            system_instruction=system_instruction
+            model_name="gemini-pro",
+            generation_config=generation_config
+            # system_instruction غير مدعوم مباشرة في gemini-pro القديم أحياناً، لكن سنتركه هنا
+            # وسنقوم بدمجه في الرسالة لضمان العمل
         )
         print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
     else:
@@ -191,7 +192,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V17.0 (Secure & Complete) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V17.1 (Gemini-Pro Fix) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -387,14 +388,21 @@ def handle_all(m):
             try:
                 # إظهار حالة "يكتب الآن..."
                 bot.send_chat_action(cid, 'typing')
-                response = model.generate_content(text)
-                # الرد بالنتيجة
+                
+                # إضافة تعليمات النظام يدوياً في الرسالة (لأن gemini-pro العادي قد لا يقبل system_instruction في البداية)
+                prompt = f"أنت مساعد إسلامي ذكي ومؤدب باللهجة المصرية. ساعد هذا المستخدم: {text}"
+                
+                response = model.generate_content(prompt)
+                
+                # طباعة الرد
                 bot.reply_to(m, response.text, parse_mode="Markdown")
             except Exception as e:
-                bot.reply_to(m, "⚠️ عذراً، حدث خطأ بسيط في الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.")
+                # طباعة الخطأ الحقيقي في التليجرام عشان نعرف السبب لو حصل
+                error_msg = f"⚠️ حدث خطأ تقني: {str(e)}"
+                bot.reply_to(m, error_msg)
                 print(f"AI Error: {e}")
         else:
-            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة حالياً (تأكد من إعدادات المفتاح في Render).")
+            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة (راجع المفتاح في Render).")
 
 if __name__ == "__main__":
     keep_alive()
