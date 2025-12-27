@@ -24,7 +24,6 @@ try:
         generation_config = {
             "temperature": 0.7,
             "top_p": 0.95,
-            # 🟢 زيادة الحد الأقصى للكلمات لضمان عدم انقطاع الرد
             "max_output_tokens": 8000,
         }
         
@@ -54,7 +53,7 @@ try:
     users_collection = db['users']
 except Exception as e: pass
 
-# --- 2. البيانات والنصوص ---
+# --- 2. البيانات والنصوص (كاملة 100%) ---
 GOOD_MSGS = ["يا مقلب القلوب ثبت قلبي.", "استمر يا بطل.", "ما شاء الله.", "أحب الأعمال أدومها.", "بيض الله وجهك."]
 BAD_MSGS = ["جاهد نفسك.", "ألم يأن للذين آمنوا؟", "تدارك نفسك.", "الصلاة هي الصلة."]
 
@@ -98,7 +97,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V25.0 (Long Messages Fixed) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V26.0 (Fixed Report & Reminders) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -128,38 +127,56 @@ def get_next_prayer_info():
             return f"⏳ **الصلاة القادمة:** {v}\n⏱️ **متبقي:** {d.seconds//3600} ساعة و {(d.seconds%3600)//60} دقيقة"
     return "⏳ **الصلاة القادمة:** الفجر (غداً)"
 
+# --- 🟢 إصلاح التنبيهات (فصل الصلاة على النبي عن الأذكار) ---
 def start_auto_reminders():
-    def remind():
+    def remind_prophet():
         while True:
-            time.sleep(1800)
-            try:
-                for u in users_collection.find({}):
-                    bot.send_message(u['_id'], "🌸 صلِّ على النبي ﷺ")
-            except: pass
-    Thread(target=remind).start()
+            time.sleep(1800) # كل 30 دقيقة
+            for user in users_collection.find({}):
+                try: bot.send_message(user['_id'], "🌸 **تذكير:**\nاللهم صلِّ وسلم على نبينا محمد ﷺ")
+                except: pass
+    
+    def remind_dhikr():
+        while True:
+            time.sleep(2400) # كل 40 دقيقة
+            msg = random.choice(["لا إله إلا الله", "سبحان الله وبحمده", "أستغفر الله العظيم وأتوب إليه", "لا حول ولا قوة إلا بالله"])
+            for user in users_collection.find({}):
+                try: bot.send_message(user['_id'], f"✨ **ذكر الله:**\n{msg}")
+                except: pass
 
+    Thread(target=remind_prophet).start()
+    Thread(target=remind_dhikr).start()
+
+# --- 🟢 إصلاح التقرير اليومي (إظهار الأسماء والأوقات) ---
 def get_today_report(chat_id):
     now = get_cairo_time()
     today = now.strftime("%Y-%m-%d")
-    u = users_collection.find_one({"_id": str(chat_id)})
-    if not u: return "لا بيانات."
-    done = u.get('prayers', {}).get(today, {})
-    msg = f"📅 **تقرير {today}:**\n"
-    c = 0
-    for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']:
-        if k in done:
-            msg += "✅\n"
-            c += 1
-        else: msg += "❌\n"
-    msg += f"\n{random.choice(GOOD_MSGS) if c>=3 else random.choice(BAD_MSGS)}"
+    user = users_collection.find_one({"_id": str(chat_id)})
+    if not user: return "لا توجد بيانات مسجلة."
+    
+    prayers_done = user.get('prayers', {}).get(today, {})
+    req = {'Fajr':'الفجر','Dhuhr':'الظهر','Asr':'العصر','Maghrib':'المغرب','Isha':'العشاء'}
+    
+    msg = f"📅 **تقرير اليوم ({today}):**\n\n"
+    count = 0
+    for k, v in req.items():
+        if k in prayers_done:
+            # هنا التعديل: إظهار الاسم والوقت
+            time_done = convert_to_12h(prayers_done[k].get('time'))
+            msg += f"✅ {v} ({time_done})\n"
+            count += 1
+        else:
+            msg += f"❌ {v}\n"
+            
+    msg += "\n➖➖➖➖➖➖\n"
+    msg += f"🌟 **رسالة لك:**\n{random.choice(GOOD_MSGS)}" if count >= 3 else f"⚠️ **تنبيه:**\n{random.choice(BAD_MSGS)}"
     return msg
 
-# --- 🟢 دالة جديدة لتقسيم الرسائل الطويلة ---
+# دالة تقسيم الرسائل الطويلة
 def send_long_message(chat_id, text):
     if len(text) <= 4000:
         bot.send_message(chat_id, text)
     else:
-        # تقسيم الرسالة إلى أجزاء كل منها 4000 حرف
         for x in range(0, len(text), 4000):
             bot.send_message(chat_id, text[x:x+4000])
 
@@ -209,7 +226,7 @@ def rec(c):
     p = c.data.split('_')[1]
     dt = get_cairo_time().strftime("%Y-%m-%d")
     users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p}": {"time": get_cairo_time().strftime("%H:%M")}}}, upsert=True)
-    bot.edit_message_text(f"✅ تم {p}", c.message.chat.id, c.message.message_id)
+    bot.edit_message_text(f"✅ تم تسجيل {p}", c.message.chat.id, c.message.message_id)
 
 # --- 6. الدالة الذكية (Handle All) ---
 @bot.message_handler(func=lambda m: True)
@@ -238,7 +255,7 @@ def handle_all(m):
                 prompt = f"أنت مساعد إسلامي. رد على: {t}"
                 response = model.generate_content(prompt)
                 
-                # 🛑 استخدام الدالة الجديدة لإرسال الرد حتى لو كان طويلاً جداً
+                # إرسال الرد (مع التقسيم إذا كان طويلاً)
                 send_long_message(cid, response.text)
                 
             except Exception as e:
