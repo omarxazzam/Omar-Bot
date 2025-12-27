@@ -13,7 +13,7 @@ import google.generativeai as genai
 
 # --- 1. إعدادات المفاتيح والاتصال (الوضع الآمن) ---
 
-# جلب مفتاح الذكاء الاصطناعي من إعدادات Render
+# جلب المفتاح من إعدادات Render مباشرة
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 # إعداد قاعدة البيانات
@@ -31,23 +31,12 @@ try:
             "max_output_tokens": 1000,
         }
         
-        system_instruction = """
-        أنت مساعد إسلامي ذكي ومؤدب اسمه 'عزام AI'.
-        دورك هو مساعدة المستخدمين في أمور دينهم ودنياهم بأسلوب لطيف ومشجع باللهجة المصرية القريبة للفصحى.
-        القواعد:
-        1. استشهد بالآيات القرآنية والأحاديث الصحيحة كلما أمكن.
-        2. في مسائل الفتاوى المعقدة (حلال وحرام)، انصح المستخدم بسؤال عالم متخصص وقل 'والله أعلم'.
-        3. كن مواسياً ومشجعاً دائماً على الخير والطاعة.
-        """
-        
-        # 🔴 تم التغيير هنا إلى gemini-pro لضمان الاستقرار
+        # استخدام موديل "gemini-1.5-flash" الأحدث والأسرع
         model = genai.GenerativeModel(
-            model_name="gemini-pro",
+            model_name="gemini-1.5-flash",
             generation_config=generation_config
-            # system_instruction غير مدعوم مباشرة في gemini-pro القديم أحياناً، لكن سنتركه هنا
-            # وسنقوم بدمجه في الرسالة لضمان العمل
         )
-        print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
+        print("✅ تم تفعيل الذكاء الاصطناعي (Flash Model) بنجاح!")
     else:
         print("⚠️ تحذير: لم يتم العثور على مفتاح GEMINI_API_KEY في متغيرات النظام.")
         model = None
@@ -64,9 +53,9 @@ try:
 except Exception as e:
     print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
 
-# --- 2. البيانات والنصوص (كاملة 100% بدون اختصار) ---
+# --- 2. البيانات والنصوص (كاملة 100%) ---
 
-# رسائل التشجيع والمحاسبة
+# رسائل التشجيع
 GOOD_MSGS = [
     "يا مقلب القلوب ثبت قلبي على دينك.", "استمر يا بطل، فالجنة سلعة الله الغالية.",
     "ما شاء الله.. زادك الله حرصاً وتوفيقاً.", "أحب الأعمال إلى الله أدومها وإن قل.",
@@ -192,7 +181,7 @@ SLEEP_ADHKAR = [
 # --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V17.1 (Gemini-Pro Fix) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V18.0 (Flash Model) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -219,7 +208,6 @@ def get_next_prayer_info():
     timings = get_prayer_timings()
     if not timings: return "تعذر جلب المواقيت."
     
-    # استخدام توقيت مصر المصحح
     now = get_cairo_time()
     prayer_names = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
     
@@ -295,7 +283,7 @@ def main_menu():
 def start(message):
     register_user(message.chat.id, message.from_user.first_name)
     next_p = get_next_prayer_info()
-    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}\n\n🤖 **ملاحظة:** أنا الآن مربوط بالذكاء الاصطناعي! اسألني عن أي شيء في الدين أو الحياة وسأجيبك بإذن الله.", reply_markup=main_menu(), parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}\n\n🤖 **ملاحظة:** أنا الآن مربوط بالذكاء الاصطناعي (أحدث نسخة)! اسألني عن أي شيء.", reply_markup=main_menu(), parse_mode="Markdown")
 
 # دالة الأذكار
 def send_dhikr(chat_id, dhikr_type, index):
@@ -344,7 +332,6 @@ def prev_dhikr(c):
 def rec_prayer(c):
     cid = str(c.message.chat.id)
     p_name = c.data.split('_')[1]
-    # استخدام توقيت مصر للتسجيل
     now = get_cairo_time()
     dt = now.strftime("%Y-%m-%d")
     users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": now.strftime("%H:%M")}}}, upsert=True)
@@ -356,20 +343,16 @@ def handle_all(m):
     text = m.text
     cid = m.chat.id
     
-    # 1. التحقق من الأزرار الثابتة أولاً
     if text == "⏳ كم باقي على الصلاة؟":
         bot.reply_to(m, get_next_prayer_info(), parse_mode="Markdown")
-
     elif text == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
     elif text == "🌙 أذكار المساء": send_dhikr(cid, "evening", 0)
     elif text == "😴 أذكار النوم": send_dhikr(cid, "sleep", 0)
-    
     elif text == "📝 تسجيل العبادات":
         markup = types.InlineKeyboardMarkup(row_width=3)
         btns = [types.InlineKeyboardButton(n, callback_data=f"rec_{e}") for n,e in [("الفجر","Fajr"),("الظهر","Dhuhr"),("العصر","Asr"),("المغرب","Maghrib"),("العشاء","Isha")]]
         markup.add(*btns)
         bot.reply_to(m, "سجل صلاتك:", reply_markup=markup)
-        
     elif text == "🕌 مواقيت الصلاة":
         t = get_prayer_timings()
         if t:
@@ -377,32 +360,22 @@ def handle_all(m):
             for k in ['Fajr','Dhuhr','Asr','Maghrib','Isha']: 
                 msg += f"🔹 {k}: {convert_to_12h(t[k])}\n"
             bot.reply_to(m, msg)
-            
     elif text == "📊 تقريري اليومي":
-        report = get_today_report(cid)
-        bot.reply_to(m, report, parse_mode="Markdown")
-        
-    # 2. إذا لم يكن زراراً -> أرسل للذكاء الاصطناعي
+        bot.reply_to(m, get_today_report(cid), parse_mode="Markdown")
     else:
+        # AI Logic
         if model:
             try:
-                # إظهار حالة "يكتب الآن..."
                 bot.send_chat_action(cid, 'typing')
-                
-                # إضافة تعليمات النظام يدوياً في الرسالة (لأن gemini-pro العادي قد لا يقبل system_instruction في البداية)
                 prompt = f"أنت مساعد إسلامي ذكي ومؤدب باللهجة المصرية. ساعد هذا المستخدم: {text}"
-                
                 response = model.generate_content(prompt)
-                
-                # طباعة الرد
                 bot.reply_to(m, response.text, parse_mode="Markdown")
             except Exception as e:
-                # طباعة الخطأ الحقيقي في التليجرام عشان نعرف السبب لو حصل
                 error_msg = f"⚠️ حدث خطأ تقني: {str(e)}"
                 bot.reply_to(m, error_msg)
                 print(f"AI Error: {e}")
         else:
-            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة (راجع المفتاح في Render).")
+            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة (راجع المفتاح).")
 
 if __name__ == "__main__":
     keep_alive()
