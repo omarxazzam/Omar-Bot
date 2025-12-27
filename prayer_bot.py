@@ -9,10 +9,49 @@ from datetime import datetime, timedelta
 import pymongo
 from pymongo import MongoClient
 import requests
+import google.generativeai as genai
 
-# --- 1. إعدادات الاتصال بقاعدة البيانات ---
+# --- 1. إعدادات المفاتيح والاتصال ---
+
+# 🛑 ضع مفتاح جوجل هنا بين علامات التنصيص
+GEMINI_API_KEY = "ضع_مفتاح_جوجل_هنا_بين_علامات_التنصيص"
+
+# إعداد قاعدة البيانات
 MONGO_URL = "mongodb+srv://omarxazzam:Omar12345@azzam.o5lxlsj.mongodb.net/?retryWrites=true&w=majority&appName=AZZAM"
 
+# تهيئة الذكاء الاصطناعي
+try:
+    # محاولة جلب المفتاح من متغيرات النظام أو استخدام المكتوب مباشرة
+    api_key = os.environ.get('GEMINI_API_KEY', GEMINI_API_KEY)
+    genai.configure(api_key=api_key)
+    
+    # إعداد شخصية البوت
+    generation_config = {
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_output_tokens": 1000,
+    }
+    
+    system_instruction = """
+    أنت مساعد إسلامي ذكي ومؤدب اسمه 'عزام AI'.
+    دورك هو مساعدة المستخدمين في أمور دينهم ودنياهم بأسلوب لطيف ومشجع باللهجة المصرية القريبة للفصحى.
+    القواعد:
+    1. استشهد بالآيات القرآنية والأحاديث الصحيحة كلما أمكن.
+    2. في مسائل الفتاوى المعقدة (حلال وحرام)، انصح المستخدم بسؤال عالم متخصص وقل 'والله أعلم'.
+    3. كن مواسياً ومشجعاً دائماً على الخير والطاعة.
+    """
+    
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config=generation_config,
+        system_instruction=system_instruction
+    )
+    print("✅ تم تفعيل الذكاء الاصطناعي بنجاح!")
+except Exception as e:
+    print(f"⚠️ تحذير: مشكلة في إعداد الذكاء الاصطناعي: {e}")
+    model = None
+
+# الاتصال بقاعدة البيانات
 try:
     client = MongoClient(MONGO_URL)
     db = client['omar_bot_db']
@@ -21,7 +60,7 @@ try:
 except Exception as e:
     print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
 
-# --- 2. البيانات والنصوص (كاملة) ---
+# --- 2. البيانات والنصوص (كاملة 100% كما طلبت) ---
 
 # رسائل التشجيع والمحاسبة
 GOOD_MSGS = [
@@ -146,10 +185,10 @@ SLEEP_ADHKAR = [
     }
 ]
 
-# --- 4. إعدادات البوت والسيرفر ---
+# --- 3. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V15.0 (Cairo Time Fixed) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V16.0 (AI + Cairo Fix) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -157,9 +196,9 @@ TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 user_adhkar_state = {}
 
-# --- 5. وظائف النظام والوقت ---
+# --- 4. وظائف النظام والوقت ---
 def get_cairo_time():
-    """دالة لضبط توقيت مصر (UTC+2) يدوياً"""
+    """ضبط توقيت مصر (UTC+2) يدوياً"""
     return datetime.utcnow() + timedelta(hours=2)
 
 def convert_to_12h(time_24):
@@ -169,8 +208,7 @@ def convert_to_12h(time_24):
     except: return time_24
 
 def get_prayer_timings():
-    try:
-        return requests.get("http://api.aladhan.com/v1/timingsByCity?city=Cairo&country=Egypt&method=5", timeout=3).json()['data']['timings']
+    try: return requests.get("http://api.aladhan.com/v1/timingsByCity?city=Cairo&country=Egypt&method=5", timeout=3).json()['data']['timings']
     except: return None
 
 def get_next_prayer_info():
@@ -240,23 +278,22 @@ def get_today_report(chat_id):
     msg += f"🌟 **رسالة لك:**\n{random.choice(GOOD_MSGS)}" if count >= 3 else f"⚠️ **تنبيه:**\n{random.choice(BAD_MSGS)}"
     return msg
 
-# --- 6. القوائم والتفاعل ---
+# --- 5. القوائم والتفاعل ---
 def main_menu():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton("⏳ كم باقي على الصلاة؟"))
     markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📝 تسجيل العبادات"))
     markup.add(types.KeyboardButton("☀️ أذكار الصباح"), types.KeyboardButton("🌙 أذكار المساء"))
     markup.add(types.KeyboardButton("😴 أذكار النوم"), types.KeyboardButton("📊 تقريري اليومي"))
-    # تم حذف أزرار السبحة وأسماء الله والكهف كما طلبت
     return markup
 
 @bot.message_handler(commands=['start'])
 def start(message):
     register_user(message.chat.id, message.from_user.first_name)
     next_p = get_next_prayer_info()
-    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}", reply_markup=main_menu(), parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"أهلاً بك يا **{message.from_user.first_name}** 👋\n\n{next_p}\n\n🤖 **ملاحظة:** أنا الآن مربوط بالذكاء الاصطناعي! اسألني عن أي شيء في الدين أو الحياة وسأجيبك بإذن الله.", reply_markup=main_menu(), parse_mode="Markdown")
 
-# --- معالجة الأذكار ---
+# دالة الأذكار
 def send_dhikr(chat_id, dhikr_type, index):
     if dhikr_type == "morning": lst, title = MORNING_ADHKAR, "☀️ الصباح"
     elif dhikr_type == "evening": lst, title = EVENING_ADHKAR, "🌙 المساء"
@@ -299,12 +336,23 @@ def prev_dhikr(c):
         bot.delete_message(cid, c.message.message_id)
         send_dhikr(cid, st['type'], st['index'] - 1)
 
-# --- معالجة الأوامر ---
+@bot.callback_query_handler(func=lambda c: c.data.startswith('rec_'))
+def rec_prayer(c):
+    cid = str(c.message.chat.id)
+    p_name = c.data.split('_')[1]
+    # استخدام توقيت مصر للتسجيل
+    now = get_cairo_time()
+    dt = now.strftime("%Y-%m-%d")
+    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": now.strftime("%H:%M")}}}, upsert=True)
+    bot.edit_message_text(f"✅ تم تسجيل {p_name}\nتقبل الله منك.", c.message.chat.id, c.message.message_id)
+
+# --- 6. الدالة الذكية (Handle All + AI) ---
 @bot.message_handler(func=lambda m: True)
 def handle_all(m):
     text = m.text
     cid = m.chat.id
     
+    # 1. التحقق من الأزرار الثابتة أولاً
     if text == "⏳ كم باقي على الصلاة؟":
         bot.reply_to(m, get_next_prayer_info(), parse_mode="Markdown")
 
@@ -329,16 +377,22 @@ def handle_all(m):
     elif text == "📊 تقريري اليومي":
         report = get_today_report(cid)
         bot.reply_to(m, report, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith('rec_'))
-def rec_prayer(c):
-    cid = str(c.message.chat.id)
-    p_name = c.data.split('_')[1]
-    # استخدام توقيت مصر للتسجيل
-    now = get_cairo_time()
-    dt = now.strftime("%Y-%m-%d")
-    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": now.strftime("%H:%M")}}}, upsert=True)
-    bot.edit_message_text(f"✅ تم تسجيل {p_name}\nتقبل الله منك.", c.message.chat.id, c.message.message_id)
+        
+    # 2. إذا لم يكن زراراً -> أرسل للذكاء الاصطناعي
+    else:
+        if model:
+            try:
+                # إظهار حالة "يكتب الآن..."
+                bot.send_chat_action(cid, 'typing')
+                response = model.generate_content(text)
+                # الرد بالنتيجة
+                bot.reply_to(m, response.text, parse_mode="Markdown")
+            except Exception as e:
+                bot.reply_to(m, "⚠️ عذراً، حدث خطأ بسيط في الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.")
+                print(f"AI Error: {e}")
+        else:
+            # لو المفتاح مش محطوط أو فيه مشكلة
+            bot.reply_to(m, "⚠️ خدمة الذكاء الاصطناعي غير مفعلة حالياً (تأكد من المفتاح).")
 
 if __name__ == "__main__":
     keep_alive()
