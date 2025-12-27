@@ -21,7 +21,7 @@ try:
 except Exception as e:
     print(f"❌ فشل الاتصال بقاعدة البيانات: {e}")
 
-# --- 2. البيانات والنصوص (كاملة وغير مختصرة) ---
+# --- 2. البيانات والنصوص (كاملة) ---
 
 # رسائل التشجيع والمحاسبة
 GOOD_MSGS = [
@@ -32,20 +32,6 @@ GOOD_MSGS = [
 BAD_MSGS = [
     "جاهد نفسك يا عزام!", "ألم يأن للذين آمنوا أن تخشع قلوبهم؟",
     "تدارك نفسك قبل فوات الأوان.", "الصلاة هي الصلة، لا تقطعها."
-]
-
-# أسماء الله الحسنى
-NAMES_OF_ALLAH = [
-    {"name": "الرَحْمَن", "meaning": "المتّصف بالرحمة الواسعة التي شملت كل شيء."},
-    {"name": "المَلِك", "meaning": "المالك لكل شيء، المتصرف في ملكه كيف يشاء."},
-    {"name": "القُدّوس", "meaning": "المنزّه عن كل نقص وعيب."},
-    {"name": "السَلام", "meaning": "الذي سلم من كل عيب، وسلم عباده من المهالك."},
-    {"name": "المُؤْمِن", "meaning": "المصدق لرسله، والذي يأمن عباده من عذابه."},
-    {"name": "العَزِيز", "meaning": "القوي الغالب الذي لا يُغلب."},
-    {"name": "الجَبّار", "meaning": "الذي يجبر قلوب المنكسرين، ويقهر الجبابرة."},
-    {"name": "الرَزّاق", "meaning": "المتكفل برزق جميع المخلوقات."},
-    {"name": "الفَتّاح", "meaning": "الذي يفتح أبواب الرحمة والرزق لعباده."},
-    {"name": "العَلِيم", "meaning": "الذي أحاط علمه بكل شيء، ظاهراً وباطناً."}
 ]
 
 # أذكار الصباح (كاملة)
@@ -163,7 +149,7 @@ SLEEP_ADHKAR = [
 # --- 4. إعدادات البوت والسيرفر ---
 app = Flask('')
 @app.route('/')
-def home(): return "<b>Omar Smart Bot V14.0 (The Complete Edition) is Online! 🚀</b>"
+def home(): return "<b>Omar Smart Bot V15.0 (Cairo Time Fixed) is Online! 🚀</b>"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): t = Thread(target=run); t.start()
 
@@ -172,6 +158,10 @@ bot = telebot.TeleBot(TOKEN)
 user_adhkar_state = {}
 
 # --- 5. وظائف النظام والوقت ---
+def get_cairo_time():
+    """دالة لضبط توقيت مصر (UTC+2) يدوياً"""
+    return datetime.utcnow() + timedelta(hours=2)
+
 def convert_to_12h(time_24):
     try:
         t = datetime.strptime(time_24, "%H:%M")
@@ -187,7 +177,8 @@ def get_next_prayer_info():
     timings = get_prayer_timings()
     if not timings: return "تعذر جلب المواقيت."
     
-    now = datetime.now()
+    # استخدام توقيت مصر المصحح
+    now = get_cairo_time()
     prayer_names = {'Fajr': 'الفجر', 'Dhuhr': 'الظهر', 'Asr': 'العصر', 'Maghrib': 'المغرب', 'Isha': 'العشاء'}
     
     today_prayers = []
@@ -228,10 +219,11 @@ def start_auto_reminders():
 def register_user(chat_id, name):
     cid = str(chat_id)
     if not users_collection.find_one({"_id": cid}):
-        users_collection.insert_one({"_id": cid, "name": name, "join_date": datetime.now().strftime("%Y-%m-%d"), "points": 0, "total_tasbeeh": 0})
+        users_collection.insert_one({"_id": cid, "name": name, "join_date": get_cairo_time().strftime("%Y-%m-%d"), "points": 0})
 
 def get_today_report(chat_id):
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = get_cairo_time()
+    today = now.strftime("%Y-%m-%d")
     user = users_collection.find_one({"_id": str(chat_id)})
     if not user: return "لا توجد بيانات."
     
@@ -255,12 +247,7 @@ def main_menu():
     markup.add(types.KeyboardButton("🕌 مواقيت الصلاة"), types.KeyboardButton("📝 تسجيل العبادات"))
     markup.add(types.KeyboardButton("☀️ أذكار الصباح"), types.KeyboardButton("🌙 أذكار المساء"))
     markup.add(types.KeyboardButton("😴 أذكار النوم"), types.KeyboardButton("📊 تقريري اليومي"))
-    markup.add(types.KeyboardButton("📿 السبحة الإلكترونية"), types.KeyboardButton("✨ أسماء الله الحسنى"))
-    
-    # ميزة الجمعة
-    if datetime.now().weekday() == 4: # Friday
-        markup.add(types.KeyboardButton("📖 سورة الكهف"))
-        
+    # تم حذف أزرار السبحة وأسماء الله والكهف كما طلبت
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -312,18 +299,7 @@ def prev_dhikr(c):
         bot.delete_message(cid, c.message.message_id)
         send_dhikr(cid, st['type'], st['index'] - 1)
 
-# --- معالجة الأوامر والمميزات ---
-@bot.callback_query_handler(func=lambda c: c.data == "tasbeeh_inc")
-def tasbeeh_increment(call):
-    cid = str(call.message.chat.id)
-    users_collection.update_one({"_id": cid}, {"$inc": {"total_tasbeeh": 1}}, upsert=True)
-    user = users_collection.find_one({"_id": cid})
-    total = user.get("total_tasbeeh", 1)
-    bot.answer_callback_query(call.id, f"سبحان الله ({total})")
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton(f"📿 سبّح ({total})", callback_data="tasbeeh_inc"))
-    bot.edit_message_reply_markup(cid, call.message.message_id, reply_markup=markup)
-
+# --- معالجة الأوامر ---
 @bot.message_handler(func=lambda m: True)
 def handle_all(m):
     text = m.text
@@ -335,20 +311,6 @@ def handle_all(m):
     elif text == "☀️ أذكار الصباح": send_dhikr(cid, "morning", 0)
     elif text == "🌙 أذكار المساء": send_dhikr(cid, "evening", 0)
     elif text == "😴 أذكار النوم": send_dhikr(cid, "sleep", 0)
-    
-    elif text == "📿 السبحة الإلكترونية":
-        user = users_collection.find_one({"_id": str(cid)})
-        total = user.get("total_tasbeeh", 0) if user else 0
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(f"📿 سبّح ({total})", callback_data="tasbeeh_inc"))
-        bot.reply_to(m, "اضغط للتسبيح، وسيتم حفظ العدد:", reply_markup=markup)
-
-    elif text == "✨ أسماء الله الحسنى":
-        d = random.choice(NAMES_OF_ALLAH)
-        bot.reply_to(m, f"✨ **{d['name']}**\n\n📖 المعنى: {d['meaning']}", parse_mode="Markdown")
-
-    elif text == "📖 سورة الكهف":
-        bot.reply_to(m, "📖 **سورة الكهف:**\nاقرأها الآن: https://quran.com/18\n\n(نور ما بين الجمعتين)")
     
     elif text == "📝 تسجيل العبادات":
         markup = types.InlineKeyboardMarkup(row_width=3)
@@ -372,8 +334,10 @@ def handle_all(m):
 def rec_prayer(c):
     cid = str(c.message.chat.id)
     p_name = c.data.split('_')[1]
-    dt = datetime.now().strftime("%Y-%m-%d")
-    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": datetime.now().strftime("%H:%M")}}}, upsert=True)
+    # استخدام توقيت مصر للتسجيل
+    now = get_cairo_time()
+    dt = now.strftime("%Y-%m-%d")
+    users_collection.update_one({"_id": cid}, {"$set": {f"prayers.{dt}.{p_name}": {"time": now.strftime("%H:%M")}}}, upsert=True)
     bot.edit_message_text(f"✅ تم تسجيل {p_name}\nتقبل الله منك.", c.message.chat.id, c.message.message_id)
 
 if __name__ == "__main__":
